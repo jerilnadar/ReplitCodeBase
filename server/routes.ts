@@ -195,6 +195,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Historical data routes
+  app.get('/api/services/historical', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.query.userId || req.user.claims.sub;
+      const includeAll = req.query.all === 'true';
+      
+      const services = await storage.getHistoricalServices(includeAll ? undefined : userId);
+      res.json(services);
+    } catch (error) {
+      console.error("Error fetching historical services:", error);
+      res.status(500).json({ message: "Failed to fetch historical services" });
+    }
+  });
+
+  app.get('/api/services/date-range/:startDate/:endDate', isAuthenticated, async (req: any, res) => {
+    try {
+      const { startDate, endDate } = req.params;
+      const services = await storage.getServicesForDateRange(startDate, endDate);
+      res.json(services);
+    } catch (error) {
+      console.error("Error fetching date range services:", error);
+      res.status(500).json({ message: "Failed to fetch date range services" });
+    }
+  });
+
+  app.get('/api/availability/historical', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const months = parseInt(req.query.months || '24');
+      
+      const availabilities = await storage.getHistoricalAvailabilities(userId, months);
+      res.json(availabilities);
+    } catch (error) {
+      console.error("Error fetching historical availabilities:", error);
+      res.status(500).json({ message: "Failed to fetch historical availabilities" });
+    }
+  });
+
   // Service assignment routes
   app.post('/api/services/:serviceId/assignments', isAuthenticated, async (req: any, res) => {
     try {
