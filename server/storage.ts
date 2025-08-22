@@ -16,7 +16,7 @@ import {
   type Notification,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc, gte, lte, sql } from "drizzle-orm";
 
 // Interface for storage operations
 export interface IStorage {
@@ -29,11 +29,14 @@ export interface IStorage {
   submitAvailability(availability: InsertAvailability): Promise<Availability>;
   getUserAvailability(userId: string, month: string): Promise<Availability | undefined>;
   getAllAvailabilitiesForMonth(month: string): Promise<(Availability & { user: User })[]>;
+  getHistoricalAvailabilities(userId: string, months?: number): Promise<Availability[]>;
   
   // Service operations
   createService(service: InsertService): Promise<Service>;
   getServicesForWeek(startDate: string, endDate: string): Promise<(Service & { assignments: (ServiceAssignment & { user: User })[] })[]>;
   getServicesForMonth(month: string): Promise<Service[]>;
+  getServicesForDateRange(startDate: string, endDate: string): Promise<(Service & { assignments: (ServiceAssignment & { user: User })[] })[]>;
+  getHistoricalServices(userId?: string): Promise<(Service & { assignments: (ServiceAssignment & { user: User })[] })[]>;
   getPendingServices(): Promise<Service[]>;
   approveService(serviceId: string, approvedBy: string): Promise<Service>;
   updateServiceStatus(serviceId: string, status: string): Promise<Service>;
@@ -145,7 +148,8 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(services)
       .where(and(
-        eq(services.serviceDate, startDate) // This would need to be a between clause for actual date range
+        gte(services.serviceDate, startDate),
+        lte(services.serviceDate, endDate)
       ))
       .orderBy(asc(services.serviceDate));
 
@@ -171,9 +175,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getServicesForMonth(month: string): Promise<Service[]> {
+    const monthStart = `${month}-01`;
+    const monthEnd = `${month}-31`;
     return await db
       .select()
       .from(services)
+      .where(and(
+        gte(services.serviceDate, monthStart),
+        lte(services.serviceDate, monthEnd)
+      ))
       .orderBy(asc(services.serviceDate));
   }
 
@@ -208,6 +218,84 @@ export class DatabaseStorage implements IStorage {
       .where(eq(services.id, serviceId))
       .returning();
     return updated;
+  }
+
+  async getServicesForDateRange(startDate: string, endDate: string): Promise<(Service & { assignments: (ServiceAssignment & { user: User })[] })[]> {
+    const rangeServices = await db
+      .select()
+      .from(services)
+      .where(and(
+        gte(services.serviceDate, startDate),
+        lte(services.serviceDate, endDate)
+      ))
+      .orderBy(desc(services.serviceDate));
+
+    const result = [];
+    for (const service of rangeServices) {
+      const assignments = await db
+        .select({
+          id: serviceAssignments.id,
+          serviceId: serviceAssignments.serviceId,
+          userId: serviceAssignments.userId,
+          role: serviceAssignments.role,
+          createdAt: serviceAssignments.createdAt,
+          user: users,
+        })
+        .from(serviceAssignments)
+        .innerJoin(users, eq(serviceAssignments.userId, users.id))
+        .where(eq(serviceAssignments.serviceId, service.id));
+
+      result.push({ ...service, assignments });
+    }
+
+    return result;
+  }
+
+  async getHistoricalServices(userId?: string): Promise<(Service & { assignments: (ServiceAssignment & { user: User })[] })[]> {
+    const twoYearsAgo = new Date();
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    let query = db
+      .select()
+      .from(services)
+      .where(and(
+        gte(services.serviceDate, twoYearsAgo.toISOString().split('T')[0]),
+        lte(services.serviceDate, yesterday.toISOString().split('T')[0])
+      ))
+      .orderBy(desc(services.serviceDate))
+      .limit(100);
+
+    const historicalServices = await query;
+    
+    const result = [];
+    for (const service of historicalServices) {
+      const assignments = await db
+        .select({
+          id: serviceAssignments.id,
+          serviceId: serviceAssignments.serviceId,
+          userId: serviceAssignments.userId,
+          role: serviceAssignments.role,
+          createdAt: serviceAssignments.createdAt,
+          user: users,
+        })
+        .from(serviceAssignments)
+        .innerJoin(users, eq(serviceAssignments.userId, users.id))
+        .where(eq(serviceAssignments.serviceId, service.id));
+
+      // If userId is provided, only include services where the user was assigned
+      if (userId) {
+        const userAssigned = assignments.some(a => a.userId === userId);
+        if (userAssigned) {
+          result.push({ ...service, assignments });
+        }
+      } else {
+        result.push({ ...service, assignments });
+      }
+    }
+
+    return result;
   }
 
   // Service assignment operations
@@ -261,6 +349,21 @@ export class DatabaseStorage implements IStorage {
       .update(notifications)
       .set({ isRead: true })
       .where(eq(notifications.id, notificationId));
+  }
+
+  async getHistoricalAvailabilities(userId: string, months: number = 24): Promise<Availability[]> {
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(cutoffDate.getMonth() - months);
+    const cutoffMonth = cutoffDate.toISOString().slice(0, 7); // YYYY-MM format
+
+    return await db
+      .select()
+      .from(availabilities)
+      .where(and(
+        eq(availabilities.userId, userId),
+        gte(availabilities.month, cutoffMonth)
+      ))
+      .orderBy(desc(availabilities.month));
   }
 }
 

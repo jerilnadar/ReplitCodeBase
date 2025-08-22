@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Music, LogOut, CalendarCheck, Clock, Users, AlertTriangle, Bell, Bolt } from "lucide-react";
+import { Music, LogOut, CalendarCheck, Clock, Users, AlertTriangle, Bell, Bolt, History } from "lucide-react";
+import { Link } from "wouter";
 import AvailabilityCalendar from "@/components/availability-calendar";
 import ScheduleCard from "@/components/schedule-card";
 import NotificationsPanel from "@/components/notifications-panel";
@@ -37,19 +38,6 @@ export default function Dashboard() {
     queryKey: ["/api/services/month", new Date().toISOString().slice(0, 7)],
     enabled: !!user,
     retry: false,
-    onError: (error: Error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
-    },
   });
 
   const { data: weekServices = [] } = useQuery({
@@ -106,20 +94,26 @@ export default function Dashboard() {
             
             <div className="flex items-center space-x-4">
               <div className="hidden md:flex items-center space-x-2">
-                {user.instrumentRole && (
-                  <Badge className={getRoleBadgeColor(user.instrumentRole)} data-testid="badge-user-role">
+                <Link href="/history">
+                  <Button variant="ghost" size="sm" data-testid="button-history">
+                    <History className="w-4 h-4 mr-2" />
+                    History
+                  </Button>
+                </Link>
+                {(user as any).instrumentRole && (
+                  <Badge className={getRoleBadgeColor((user as any).instrumentRole)} data-testid="badge-user-role">
                     <Music className="w-3 h-3 mr-1" />
-                    {user.instrumentRole.charAt(0).toUpperCase() + user.instrumentRole.slice(1)}
+                    {(user as any).instrumentRole.charAt(0).toUpperCase() + (user as any).instrumentRole.slice(1)}
                   </Badge>
                 )}
               </div>
               
               <div className="flex items-center space-x-2 text-gray-700">
                 <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white text-sm font-medium">
-                  {user.firstName?.[0]}{user.lastName?.[0]}
+                  {(user as any).firstName?.[0]}{(user as any).lastName?.[0]}
                 </div>
                 <span className="font-medium" data-testid="text-username">
-                  {user.firstName} {user.lastName}
+                  {(user as any).firstName} {(user as any).lastName}
                 </span>
               </div>
               
@@ -151,7 +145,7 @@ export default function Dashboard() {
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-500">This Month</p>
                     <p className="text-2xl font-semibold text-gray-900" data-testid="stat-this-month">
-                      {services.length}
+                      {(services as any[]).length}
                     </p>
                     <p className="text-xs text-gray-500">Services Scheduled</p>
                   </div>
@@ -168,7 +162,7 @@ export default function Dashboard() {
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-500">Pending</p>
                     <p className="text-2xl font-semibold text-gray-900" data-testid="stat-pending">
-                      {services.filter(s => s.approvalStatus === 'pending').length}
+                      {(services as any[]).filter((s: any) => s.approvalStatus === 'pending').length}
                     </p>
                     <p className="text-xs text-gray-500">Awaiting Approval</p>
                   </div>
@@ -226,8 +220,8 @@ export default function Dashboard() {
               
               <div className="p-6">
                 <div className="space-y-4">
-                  {weekServices.length > 0 ? (
-                    weekServices.map((service) => (
+                  {(weekServices as any[]).length > 0 ? (
+                    (weekServices as any[]).map((service: any) => (
                       <ScheduleCard key={service.id} service={service} />
                     ))
                   ) : (
@@ -255,7 +249,7 @@ export default function Dashboard() {
         </div>
 
         {/* Pastor Approval Section */}
-        {user.role === 'pastor' && <PastorApprovalSection />}
+        {(user as any).role === 'pastor' && <PastorApprovalSection />}
       </main>
 
       {/* Footer */}
